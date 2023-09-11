@@ -41,6 +41,58 @@ class MetaParser:
         self.re_text = re.compile("<TEXT>(.*?)</TEXT>", flags=re.DOTALL)
         self.re_sec_header = re.compile("<SEC-HEADER>.*?\n(.*?)</SEC-HEADER>", flags=re.DOTALL)
 
+    def process_main_document(self, intxt, filing_type):
+        """Process a string xlrb file and return the main document of the specified type.
+
+        Args:
+            intxt (str): String containing the text of an xlrb file.
+            filing_type (FilingType): The type of document to extract.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If no document of the specified type is found.
+        """
+
+        sec_doc_cursor = 0
+        sec_doc_count = intxt.count("<SEC-DOCUMENT>")
+        for sec_doc_num in range(sec_doc_count):
+            sec_doc_match = self.re_sec_doc.search(intxt, pos=sec_doc_cursor)
+            if not sec_doc_match:
+                break
+
+            sec_doc_cursor = sec_doc_match.span()[1]
+            sec_doc = sec_doc_match.group(1)
+
+            # metadata
+            metadata_match = self.re_sec_header.search(sec_doc)
+            metadata_txt = metadata_match.group(1)
+            metadata_cursor = metadata_match.span()[1]
+            metadata_dict = self.process_metadata(metadata_txt)
+            # logging.info("Metadata written into {}".format(metadata_file))
+
+            # Loop through every document
+            metadata_dict["documents"] = []
+            documents = sec_doc[metadata_cursor:].strip()
+            doc_count = documents.count("<DOCUMENT>")
+            doc_cursor = 0
+            for doc_num in range(doc_count):
+                doc_match = self.re_doc.search(documents, pos=doc_cursor)
+                if not sec_doc_match:
+                    break
+                doc = doc_match.group(1)
+                doc_cursor = doc_match.span()[1]
+                doc_metadata = self.process_document_metadata(doc)
+                metadata_dict["documents"].append(doc_metadata)
+
+                if doc_metadata['type'] == filing_type.value:
+                    doc_txt = self.re_text.search(doc).group(1).strip()
+                    return doc_txt
+                
+        raise ValueError("No document of type {} found".format(filing_type.value))
+
+ 
     def process(self, infile, out_dir=None, create_subdir=True, rm_infile=False):
         """Process a text file and save processed files.
 
